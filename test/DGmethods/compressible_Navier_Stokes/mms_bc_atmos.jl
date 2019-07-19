@@ -32,12 +32,6 @@ end
 
 include("mms_solution_generated.jl")
 
-
-function mms2_bc!(stateP::Vars, diffP::Vars, auxP::Vars, nM, stateM::Vars, diffM::Vars, auxM::Vars, bctype, t)
-  x,y,z = auxM.coord.x, auxM.coord.y, auxM.coord.z
-  mms2_init_state!(stateP, auxP, (x, y, z), t)
-end
-
 function mms2_init_state!(state::Vars, aux::Vars, (x,y,z), t)
   state.ρ = ρ_g(t, x, y, z, Val(2))
   state.ρu = SVector(U_g(t, x, y, z, Val(2)),
@@ -53,12 +47,6 @@ function mms2_source!(source::Vars, state::Vars, aux::Vars, t::Real)
                       SV_g(t, x, y, z, Val(2)),
                       SW_g(t, x, y, z, Val(2)))
   source.ρe = SE_g(t, x, y, z, Val(2))
-end
-
-
-function mms3_bc!(stateP::Vars, diffP::Vars, auxP::Vars, nM, stateM::Vars, diffM::Vars, auxM::Vars, bctype, t)
-  x,y,z = auxM.coord.x, auxM.coord.y, auxM.coord.z
-  mms3_init_state!(stateP, auxP, (x, y, z), t)
 end
 
 function mms3_init_state!(state::Vars, aux::Vars, (x,y,z), t)
@@ -78,29 +66,6 @@ function mms3_source!(source::Vars, state::Vars, aux::Vars, t::Real)
   source.ρe = SE_g(t, x, y, z, Val(3))
 end
 
-
-
-
-struct MMSDryModel <: Atmos.MoistureModel
-end
-
-function Atmos.pressure(::MMSDryModel, state::Vars, aux::Vars, t::Real)
-  T = eltype(state)
-  γ = T(γ_exact)
-  ρinv = 1 / state.ρ
-  P = (γ-1)*(state.ρe - ρinv/2 * sum(abs2, state.ρu))
-end
-
-function Atmos.soundspeed(m::MMSDryModel, state::Vars, aux::Vars, t::Real)
-  T = eltype(state)
-  γ = T(γ_exact)
-
-  ρinv = 1 / state.ρ
-  P = Atmos.pressure(m, state, aux, t)
-  sqrt(ρinv * γ * P)
-end
-
-
 # initial condition                     
 
 function run(mpicomm, ArrayType, dim, topl, warpfun, N, timeend, DFloat, dt)
@@ -113,11 +78,11 @@ function run(mpicomm, ArrayType, dim, topl, warpfun, N, timeend, DFloat, dt)
                                          )
 
   if dim == 2
-    model = AtmosModel(ConstantViscosityWithDivergence(DFloat(μ_exact)),MMSDryModel(),NoRadiation(),
-    mms2_source!, mms2_bc!, mms2_init_state!)
+    model = AtmosModel(ConstantViscosityWithDivergence(DFloat(μ_exact)),DryModel(),NoRadiation(),
+    mms2_source!, InitStateBC(), mms2_init_state!)
   else  
-    model = AtmosModel(ConstantViscosityWithDivergence(DFloat(μ_exact)),MMSDryModel(),NoRadiation(),
-    mms3_source!, mms3_bc!, mms3_init_state!)
+    model = AtmosModel(ConstantViscosityWithDivergence(DFloat(μ_exact)),DryModel(),NoRadiation(),
+    mms3_source!, InitStateBC(), mms3_init_state!)
   end 
 
   dg = DGModel(model,

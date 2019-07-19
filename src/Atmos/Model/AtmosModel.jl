@@ -1,14 +1,28 @@
 module Atmos
 
-export AtmosModel, ConstantViscosityWithDivergence, NoRadiation
+export AtmosModel, 
+  ConstantViscosityWithDivergence, 
+  DryModel, MoistEquil,
+  NoRadiation,
+  NoFluxBC, InitStateBC
 
 using LinearAlgebra, StaticArrays
 using ..VariableTemplates
 
-import CLIMA.DGmethods: BalanceLaw, vars_aux, vars_state, vars_transform, vars_diffusive,
-  flux!, source!, wavespeed, boundarycondition!, gradtransform!, diffusive!,
+import CLIMA.DGmethods: BalanceLaw, vars_aux, vars_state, vars_gradient, vars_diffusive,
+  flux!, source!, wavespeed, boundarycondition!, gradvariables!, diffusive!,
   init_aux!, init_state!, update_aux!
-  
+
+"""
+    AtmosModel <: BalanceLaw
+
+A `BalanceLaw` for atmosphere modelling.
+
+# Usage
+
+    AtmosModel(turbulence, moisture, radiation, source, boundarycondition, init_state)
+
+"""
 struct AtmosModel{T,M,R,S,BC,IS} <: BalanceLaw
   turbulence::T
   moisture::M
@@ -23,9 +37,9 @@ function vars_state(m::AtmosModel, T)
   NamedTuple{(:ρ, :ρu, :ρe, :turbulence, :moisture, :radiation), 
   Tuple{T, SVector{3,T}, T, vars_state(m.turbulence,T), vars_state(m.moisture,T), vars_state(m.radiation, T)}}
 end
-function vars_transform(m::AtmosModel, T)
+function vars_gradient(m::AtmosModel, T)
   NamedTuple{(:u, :turbulence, :moisture, :radiation),
-  Tuple{SVector{3,T}, vars_transform(m.turbulence,T), vars_transform(m.moisture,T), vars_transform(m.radiation,T)}}
+  Tuple{SVector{3,T}, vars_gradient(m.turbulence,T), vars_gradient(m.moisture,T), vars_gradient(m.radiation,T)}}
 end
 function vars_diffusive(m::AtmosModel, T)
   NamedTuple{(:ρτ, :turbulence, :moisture, :radiation),
@@ -37,7 +51,7 @@ function vars_aux(m::AtmosModel, T)
 end
 
 # Navier-Stokes flux terms
-function flux!(m::AtmosModel,flux::Grad, state::Vars, diffusive::Vars, aux::Vars, t::Real)
+function flux!(m::AtmosModel, flux::Grad, state::Vars, diffusive::Vars, aux::Vars, t::Real)
   # preflux
   ρinv = 1/state.ρ
   ρu = state.ρu
@@ -75,11 +89,11 @@ function wavespeed(m::AtmosModel, nM, state::Vars, aux::Vars, t::Real)
   return abs(dot(nM, u)) + soundspeed(m.moisture, state, aux, t)
 end
 
-function gradtransform!(m::AtmosModel, transform::Vars, state::Vars, aux::Vars, t::Real)
+function gradvariables!(m::AtmosModel, transform::Vars, state::Vars, aux::Vars, t::Real)
   ρinv = 1 / state.ρ
   transform.u = ρinv * state.ρu
 
-  gradtransform!(m.moisture, transform, state, aux, t)
+  gradvariables!(m.moisture, transform, state, aux, t)
 end
 
 function diffusive!(m::AtmosModel, diffusive::Vars, ∇transform::Grad, state::Vars, aux::Vars, t::Real)
@@ -123,12 +137,47 @@ function source!(bl::AtmosModel, source::Vars, state::Vars, aux::Vars, t::Real)
   bl.source(source, state, aux, t)
 end
 
+
+# TODO: figure out a better interface for this.
+# at the moment we can just pass a function, but we should do something better
+# need to figure out how subcomponents will interact.
 function boundarycondition!(bl::AtmosModel, stateP::Vars, diffP::Vars, auxP::Vars, nM, stateM::Vars, diffM::Vars, auxM::Vars, bctype, t)
   bl.boundarycondition(stateP, diffP, auxP, nM, stateM, diffM, auxM, bctype, t)
 end
 
+abstract type BoundaryCondition
+end
+
+"""
+    NoFluxBC <: BoundaryCondition
+
+Set the momentum at the boundary to be zero.
+"""
+struct NoFluxBC <: BoundaryCondition
+end
+function boundarycondition!(bl::AtmosModel{T,M,R,S,BC,IS}, stateP::Vars, diffP::Vars, auxP::Vars, 
+    nM, stateM::Vars, diffM::Vars, auxM::Vars, bctype, t) where {T,M,R,S,BC <: NoFluxBC,IS}
+  
+  stateP.ρu -= 2 * dot(stateM.ρu, nM) * nM  
+end
+
+"""
+    InitStateBC <: BoundaryCondition
+
+Set the value at the boundary to match the `init_state!` function. This is mainly useful for cases where the problem has an explicit solution.
+"""
+struct InitStateBC <: BoundaryCondition
+end
+function boundarycondition!(bl::AtmosModel{T,M,R,S,BC,IS}, stateP::Vars, diffP::Vars, auxP::Vars, 
+    nM, stateM::Vars, diffM::Vars, auxM::Vars, bctype, t) where {T,M,R,S,BC <: InitStateBC,IS}
+  coord = (auxP.coord.x, auxP.coord.y, auxP.coord.z)
+  init_state!(bl, stateP, auxP, coord, t)
+end
+
+
+
 function init_state!(bl::AtmosModel, state::Vars, aux::Vars, coords, t)
-  bl.init_state(state,aux, coords, t)
+  bl.init_state(state, aux, coords, t)
 end
 
 end # module
