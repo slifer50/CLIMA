@@ -20,7 +20,9 @@ Initial Condition Function
 Initial state definition for the case of the stable, rising thermal bubble. 
 3D (2D bubble definition with periodic third dimension)
 """
- 
+
+function Setup_Rising_Thermal_Bubble!(state::Vars, aux::Vars, source::Vars, t::Real, (x,y,z))
+
   function Rising_Thermal_Bubble_Init!(state::Vars, aux::Vars, (x,y,z), t)
     x,y,z = aux.coord.x, aux.coord.y, aux.coord.z
     DF = eltype(state.ρ)
@@ -75,5 +77,8 @@ Sources (DG Right-hand-side) terms for the case of a dry bubble
                         geopotential)
   end
 
+  return Rising_Thermal_Bubble_Source!, Rising_Thermal_Bubble_Source!, Rising_Thermal_Bubble_BCs!
+
+  end
 end
 

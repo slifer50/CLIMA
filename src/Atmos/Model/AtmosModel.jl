@@ -2,6 +2,7 @@ module Atmos
 
 export AtmosModel, 
   ConstantViscosityWithDivergence, 
+  SmagorinskyLilly, 
   DryModel, MoistEquil,
   NoRadiation,
   NoFluxBC, InitStateBC
@@ -157,7 +158,6 @@ struct NoFluxBC <: BoundaryCondition
 end
 function boundarycondition!(bl::AtmosModel{T,M,R,S,BC,IS}, stateP::Vars, diffP::Vars, auxP::Vars, 
     nM, stateM::Vars, diffM::Vars, auxM::Vars, bctype, t) where {T,M,R,S,BC <: NoFluxBC,IS}
-  
   stateP.ρu -= 2 * dot(stateM.ρu, nM) * nM  
 end
 
