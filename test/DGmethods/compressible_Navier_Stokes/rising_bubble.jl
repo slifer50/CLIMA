@@ -32,20 +32,6 @@ if !@isdefined integration_testing
     parse(Bool, lowercase(get(ENV,"JULIA_CLIMA_INTEGRATION_TESTING","false")))
 end
 
-# TODO: Use functions to pass functions? 
-(InitialStateFunction!, Source_Function!, Boundary_Condition!) = Setup_Rising_Thermal_Bubble!(state::Vars, aux::Vars, source::Vars, t::Real, (x,y,z))
-
-# TODO: better interface for BC (@Simon), output modularised (?)
-function boundarycondition!(stateP::Vars, diffP::Vars, auxP::Vars, nM, stateM::Vars, diffM::Vars, auxM::Vars, bctype, t)
-  # Scalars are the same across the boundary
-  stateP.ρ = stateM.ρ
-  stateP.ρe = stateM.ρe
-  
-  # Knock out wall-normal velocity components (slip-wall boundary)
-  stateP.ρu = stateM.ρu
-  stateP.ρu -= 2 * dot(stateM.ρu, nM) * nM  
-end
-
 # initial condition                     
 function run(mpicomm, ArrayType, dim, topl, N, timeend, DF, dt)
   # ----------------------------------------------------------------
@@ -55,10 +41,8 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, DF, dt)
                                           polynomialorder = N
                                           )
   # ----------------------------------------------------------------
-  #model = AtmosModel(ConstantViscosityWithDivergence(DF(50)), DryModel(), NoRadiation(),
-  #                   Rising_Thermal_Bubble_Source!, boundarycondition!, Rising_Thermal_Bubble_Init!)
   model = AtmosModel(ConstantViscosityWithDivergence(DF(50)), DryModel(), NoRadiation(),
-                     Sources!, BoundaryConditions!, InitialConditions!)
+                     Rising_Thermal_Bubble_Source!, NoFluxBC(), Rising_Thermal_Bubble_Init!)
   
   dg = DGModel(model,
                grid,
