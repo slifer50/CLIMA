@@ -17,7 +17,7 @@ export InitialConditions!, Sources!, BoundaryConditions!
 
 Initial Condition Function
 Initial state definition for the case of the stable, rising thermal bubble. 
-3D (2D bubble definition with periodic third dimension)
+3D (2D bubble definition with periodic third dimension). Viscous flow case.
 """
 
   function Rising_Thermal_Bubble_Init!(state::Vars, aux::Vars, (x,y,z), t)
@@ -62,8 +62,7 @@ Initial state definition for the case of the stable, rising thermal bubble.
 """
    Rising_Thermal_Bubble_Source!(state::Vars, aux::Vars, t)
 
-Source Function 
-Sources (DG Right-hand-side) terms for the case of a dry bubble
+Source Function  for Rising Thermal Bubble (Viscous) Problem
 """
 
   function Rising_Thermal_Bubble_Source!(source::Vars, state::Vars, aux::Vars, t::Real)

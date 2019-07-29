@@ -15,10 +15,10 @@ end
 function preodefun!(m::NoRadiation, auxstate::Vars, state::Vars, t::Real)
 end
 
-struct StevensRadiation <: RadiationModel
+struct DycomsRadiation <: RadiationModel
 end
-vars_aux(m::StevensRadiation) = (:z, :zero_to_z, :z_to_inf)
-function flux!(m::StevensRadiation, flux::Grad, state::Vars, diffusive::Vars, auxstate::Vars, t::Real)
+vars_aux(m::DycomsRadiation) = (:z, :zero_to_z, :z_to_inf)
+function flux!(m::DycomsRadiation, flux::Grad, state::Vars, diffusive::Vars, auxstate::Vars, t::Real)
     T = eltype(flux)
 
     z_i = T(840)  # Start with constant inversion height of 840 meters then build in check based on q_tot
@@ -35,5 +35,5 @@ function flux!(m::StevensRadiation, flux::Grad, state::Vars, diffusive::Vars, au
 
     flux.ρe -= SVector(T(0), T(0), state.ρ * F_rad)
 end
-function preodefun!(m::StevensRadiation, auxstate::Vars, state::Vars, t::Real)
+function preodefun!(m::DycomsRadiation, auxstate::Vars, state::Vars, t::Real)
 end
