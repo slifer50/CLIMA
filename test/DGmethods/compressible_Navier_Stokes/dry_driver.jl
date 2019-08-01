@@ -61,7 +61,7 @@ function run(mpicomm,ArrayType, dim, N, brickrange, timeend, DF, dt)
   @info @sprintf """Starting
   norm(Q₀) = %.16e""" eng0
   starttime = Ref(now())
-  cbinfo = GenericCallbacks.EveryXWallTimeSeconds(10, mpicomm) do (s=false)
+  cbinfo = GenericCallbacks.EveryXWallTimeSeconds(1, mpicomm) do (s=false)
     if s
       starttime[] = now()
     else
@@ -136,8 +136,8 @@ let
   DF = Float64
   dim = 3
   Ne = (40,1,20)
-  dt = 0.01
-  timeend = 0.1
+  dt = 0.001
+  timeend = 2*dt
   brickrange = (range(DF(0); length=Ne[1]+1, stop=DF(25600)),
                 range(DF(0); length=Ne[2]+1, stop=DF(100)),
                 range(DF(0); length=Ne[3]+1, stop=DF(6400)))

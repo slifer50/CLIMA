@@ -9,8 +9,6 @@ using LinearAlgebra
 using StaticArrays
 using CLIMA.PlanetParameters
 
-export ProblemDefinition
-
 export Setup
 
 struct ProblemDefinition
@@ -65,7 +63,7 @@ Initial state definition for the case of the stable, falling thermal bubble.
     state.ρ = ρ
     state.ρu = SVector(ρu,
                        ρv,
-                       0)
+                       ρw)
     state.ρe = ρe_tot
   end
 
@@ -126,7 +124,7 @@ Initial state definition for the case of the stable, rising thermal bubble.
     state.ρ = ρ
     state.ρu = SVector(ρu,
                        ρv,
-                       0)
+                       ρw)
     state.ρe = ρe_tot
   end
 
@@ -139,22 +137,24 @@ Source Function  for Rising Thermal Bubble (Viscous) Problem
   function Rising_Thermal_Bubble_Source!(source::Vars, state::Vars, aux::Vars, t::Real)
     x,y,z = aux.coord.x, aux.coord.y, aux.coord.z
     geopotential = -state.ρ * grav
-    source.ρu = SVector(0,
-                        0,
+    source.ρu = SVector(0.0,
+                        0.0,
                         geopotential)
   end
   
   # List of currently available problem setups 
-  DensityCurrent   = ProblemDefinition(Density_Current_Init!, 
+  DensityCurrent   = ProblemDefinition(
+                                       Density_Current_Init!, 
                                        Density_Current_Source!, 
-                                       NoFluxBC(), 
-                                       SmagorinskyLilly(Float64(0.15), 50), 
+                                       InitStateBC(), 
+                                       SmagorinskyLilly(Float64(0.15), 100.0), 
                                        )
 
-  RisingBubble     = ProblemDefinition(Rising_Thermal_Bubble_Init!, 
+  RisingBubble     = ProblemDefinition(
+                                       Rising_Thermal_Bubble_Init!, 
                                        Rising_Thermal_Bubble_Source!, 
-                                       NoFluxBC(), 
-                                       SmagorinskyLilly(Float64(0.15),50), 
+                                       InitStateBC(), 
+                                       SmagorinskyLilly(Float64(0.15),50.0), 
                                        )
 
   # User Inputs Problem Name Here  
