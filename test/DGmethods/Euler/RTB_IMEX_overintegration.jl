@@ -2,6 +2,7 @@ using MPI
 using CLIMA
 using CLIMA.Mesh.Topologies
 using CLIMA.Mesh.Grids
+using CLIMA.SpaceMethods
 using CLIMA.DGBalanceLawDiscretizations
 using CLIMA.DGBalanceLawDiscretizations.NumericalFluxes
 using CLIMA.MPIStateArrays
@@ -61,15 +62,18 @@ const Nex = ceil(Int64, ratiox)
 const Ney = ceil(Int64, ratioy)
 const Nez = ceil(Int64, ratioz)
 
-const _nauxstate = 6
-const _a_ρ0, _a_ρe0, _a_ϕ, _a_ϕ_x, _a_ϕ_y, _a_ϕ_z = 1:_nauxstate
-const auxstatenames = ("ρ0", "ρe0", "ϕ", "ϕ_x", "ϕ_y", "ϕ_z")
+const _nauxstate = 7
+const _a_ρ0, _a_e0, _a_ϕ, _a_p0, _a_ϕ_x, _a_ϕ_y, _a_ϕ_z = 1:_nauxstate
 function auxiliary_state_initialization!(aux, x, y, z) #JK, dx, dy, dz)
   @inbounds begin
-    ρ0, ρe0 = reference2D_ρ_ρe(x, y, z)
+    γ::eltype(aux) = γ_exact # FIXME: Remove this for some moist thermo approach
+    ρ0, e0 = reference2D_ρ_e(x, y, z)
+    ϕ = y * grav
+    p0 = (γ-1)*(e0 - ϕ)
     aux[_a_ρ0] = ρ0
-    aux[_a_ρe0] = ρe0
-    aux[_a_ϕ] = y * grav
+    aux[_a_e0] = e0
+    aux[_a_p0] = p0
+    aux[_a_ϕ] = ϕ
     aux[_a_ϕ_x] = 0
     aux[_a_ϕ_y] = grav
     aux[_a_ϕ_z] = 0
@@ -82,9 +86,9 @@ function pressure(Q, aux)
     γ::eltype(Q) = γ_exact # FIXME: Remove this for some moist thermo approach
     δρ, δρe = Q[_δρ], Q[_δρe]
     ρu⃗ = SVector(Q[_ρu], Q[_ρv], Q[_ρw])
-    ρ0, ρe0, ϕ = aux[_a_ρ0], aux[_a_ρe0], aux[_a_ϕ]
+    ρ0, e0, ϕ = aux[_a_ρ0], aux[_a_e0], aux[_a_ϕ]
     ρ = ρ0 + δρ
-    ρe = ρe0 + δρe
+    ρe = ρ0 * e0 + δρe
     ρinv = 1 / ρ
     (γ-1)*(ρe - ρinv * (ρu⃗' * ρu⃗) / 2 - ϕ * ρ)
   end
@@ -97,9 +101,9 @@ function wavespeed(n, Q, aux, t)
     P = pressure(Q, aux)
     δρ, δρe = Q[_δρ], Q[_δρe]
     ρu⃗ = SVector(Q[_ρu], Q[_ρv], Q[_ρw])
-    ρ0, ρe0 = aux[_a_ρ0], aux[_a_ρe0]
+    ρ0, e0 = aux[_a_ρ0], aux[_a_e0]
     ρ = ρ0 + δρ
-    ρe = ρe0 + δρe
+    ρe = ρ0 * e0 + δρe
     ρinv = 1 / ρ
     u⃗ = ρinv * ρu⃗
     abs(n⃗' * u⃗) + sqrt(ρinv * γ * P)
@@ -111,9 +115,9 @@ function euler_flux!(F, Q, _, aux, t)
   @inbounds begin
     δρ, δρe = Q[_δρ], Q[_δρe]
     ρu⃗ = SVector(Q[_ρu], Q[_ρv], Q[_ρw])
-    ρ0, ρe0 = aux[_a_ρ0], aux[_a_ρe0]
+    ρ0, e0 = aux[_a_ρ0], aux[_a_e0]
     ρ = ρ0 + δρ
-    ρe = ρe0 + δρe
+    ρe = ρ0 * e0 + δρe
     ρinv = 1 / ρ
     u⃗ = ρinv * ρu⃗
 
@@ -167,7 +171,7 @@ function source_geopotential!(S, Q, aux, t)
   end
 end
 
-function reference2D_ρ_ρe(x, y, z)
+function reference2D_ρ_e(x, y, z)
   DFloat                = eltype(x)
   R_gas::DFloat         = R_d
   c_p::DFloat           = cp_d
@@ -188,7 +192,7 @@ function reference2D_ρ_ρe(x, y, z)
   e_pot = gravity * y
   e_int = cv_d *  T
   ρe    = ρ * (e_int + e_kin + e_pot)
-  ρ, ρe
+  ρ, ρe / ρ
 end
 
 # Initial Condition
@@ -230,8 +234,8 @@ function rising_bubble!(dim, Q, t, x, y, z, aux)
   ρe    = ρ * (e_int + e_kin + e_pot)
   ρu⃗    = ρ * u⃗
 
-  @inbounds ρ0, ρe0 = aux[_a_ρ0], aux[_a_ρe0]
-  @inbounds Q[_δρ], Q[_δρe] = ρ-ρ0, ρe-ρe0
+  @inbounds ρ0, e0 = aux[_a_ρ0], aux[_a_e0]
+  @inbounds Q[_δρ], Q[_δρe] = ρ-ρ0, ρe - ρ0 * e0
   @inbounds Q[_ρu⃗] = ρu⃗
 end
 
@@ -245,16 +249,12 @@ function lin_eulerflux!(F, Q, _, aux, t)
     δρ, δρe = Q[_δρ], Q[_δρe]
     ρu⃗ = SVector(Q[_ρu], Q[_ρv], Q[_ρw])
 
-    ρ0, ρe0 = aux[_a_ρ0], aux[_a_ρe0]
+    ρ0, e0, p0 = aux[_a_ρ0], aux[_a_e0], aux[_a_p0]
     ϕ = aux[_a_ϕ]
 
     ρinv0 = 1 / ρ0
-    e0 = ρinv0 * ρe0
 
-    P0 = (γ-1)*(ρe0 - ρ0 * ϕ)
     δP = (γ-1)*(δρe - δρ * ϕ)
-
-    p0 = ρinv0 * P0
 
     F[:, _δρ ] = ρu⃗
     F[:, _ρu⃗ ] = δP * I + @SMatrix zeros(3,3)
@@ -266,11 +266,9 @@ function wavespeed_linear(n, Q, aux, t)
   DFloat = eltype(Q)
   γ::DFloat = γ_exact # FIXME: Remove this for some moist thermo approach
 
-  ρ0, ρe0, ϕ = aux[_a_ρ0], aux[_a_ρe0], aux[_a_ϕ]
-  ρinv0 = 1 / ρ0
-  P0 = (γ-1)*(ρe0 - ρ0 * ϕ)
+  p0 = aux[_a_p0]
 
-  sqrt(ρinv0 * γ * P0)
+  sqrt(γ * p0)
 end
 
 function lin_source!(S,Q,aux,t)
@@ -310,11 +308,13 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt, output_steps)
   grid = DiscontinuousSpectralElementGrid(topl,
                                           FloatType = DFloat,
                                           DeviceArray = ArrayType,
-                                          polynomialorder = N)
+                                          polynomialorder = 2N)
 
   numflux!(x...) = NumericalFluxes.rusanov!(x..., euler_flux!, wavespeed)
   numbcflux!(x...) = NumericalFluxes.rusanov_boundary_flux!(x..., euler_flux!,
                                                             bcstate!, wavespeed)
+
+  filter = CutoffFilter(grid, N)
 
   # spacedisc = data needed for evaluating the right-hand side function
   spacedisc = DGBalanceLaw(grid = grid,
@@ -333,12 +333,12 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt, output_steps)
 
   # {{{ Lineariztion Setup
   lin_numflux!(x...) = NumericalFluxes.rusanov!(x..., lin_eulerflux!,
-                                                # (_...)->0) # central
-                                                wavespeed_linear)
+                                                (_...)->0) # central
+                                                # wavespeed_linear)
   lin_numbcflux!(x...) =
   NumericalFluxes.rusanov_boundary_flux!(x..., lin_eulerflux!, lin_bcstate!,
-                                         # (_...)->0) # central
-                                         wavespeed_linear)
+                                         (_...)->0) # central
+                                         # wavespeed_linear)
   lin_spacedisc = DGBalanceLaw(grid = grid,
                                length_state_vector = _nstate,
                                flux! = lin_eulerflux!,
@@ -349,13 +349,32 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt, output_steps)
                                auxiliary_state_initialization!,
                                source! = lin_source!)
 
+  DGBalanceLawDiscretizations.apply!(lin_spacedisc.auxstate,
+                                     1:_nauxstate, lin_spacedisc, filter)
+  DGBalanceLawDiscretizations.apply!(spacedisc.auxstate,
+                                     1:_nauxstate, spacedisc, filter)
+
+  function nonlin_rhs!(dQ, Q, param, t; increment)
+    DGBalanceLawDiscretizations.apply!(Q, 1:_nstate, spacedisc, filter)
+    SpaceMethods.odefun!(spacedisc, dQ, Q, param, t; increment = increment)
+    DGBalanceLawDiscretizations.apply!(dQ, 1:_nstate, spacedisc, filter)
+  end
+  function lin_rhs!(dQ, Q, param, t; increment)
+    DGBalanceLawDiscretizations.apply!(Q, 1:_nstate, lin_spacedisc, filter)
+    SpaceMethods.odefun!(lin_spacedisc, dQ, Q, param, t; increment = increment)
+    DGBalanceLawDiscretizations.apply!(dQ, 1:_nstate, lin_spacedisc, filter)
+  end
 
   # NOTE: In order to get the same results on the CPU and GPU we force ourselves
   # to take the same number of iterations by setting at really high tolerance
   # specifying the number of restarts
   linearsolver = GeneralizedConjugateResidual(10, Q, 1e-8)
 
+  #=
   timestepper = ARK548L2SA2KennedyCarpenter(spacedisc, lin_spacedisc,
+                                            linearsolver, Q; dt = dt, t0 = 0)
+  =#
+  timestepper = ARK548L2SA2KennedyCarpenter(nonlin_rhs!, lin_rhs!,
                                             linearsolver, Q; dt = dt, t0 = 0)
   # }}}
 
@@ -384,14 +403,14 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt, output_steps)
   end
 
   step = [0]
-  vtkdir = "vtk_RTB_IMEX"
+  vtkdir = "vtk_RTB_IMEX_overintegration"
   mkpath(vtkdir)
   cbvtk = GenericCallbacks.EveryXSimulationSteps(output_steps) do (init=false)
     outprefix = @sprintf("%s/RTB_%dD_mpirank%04d_step%04d", vtkdir, dim,
                          MPI.Comm_rank(mpicomm), step[1])
     @debug "doing VTK output" outprefix
     writevtk(outprefix, Q, spacedisc, statenames, spacedisc.auxstate, auxstatenames)
-    pvtuprefix = @sprintf("RTB_%dD_step%04d", dim, step[1])
+    pvtuprefix = @sprintf("RTB_%dD_overintegration_step%04d", dim, step[1])
     prefixes = ntuple(i->
                       @sprintf("%s/RTB_%dD_mpirank%04d_step%04d", vtkdir,
                                dim, i-1, step[1]),
