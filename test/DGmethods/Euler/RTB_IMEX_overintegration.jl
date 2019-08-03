@@ -15,6 +15,7 @@ using Logging, Printf, Dates
 using CLIMA.Vtk
 using CLIMA.LinearSolvers
 using CLIMA.GeneralizedConjugateResidualSolver
+using CLIMA.GeneralizedMinimalResidual
 using CLIMA.AdditiveRungeKuttaMethod
 
 const γ_exact = 7 // 5 # FIXME: Remove this for some moist thermo approach
@@ -368,7 +369,7 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt, output_steps)
   # NOTE: In order to get the same results on the CPU and GPU we force ourselves
   # to take the same number of iterations by setting at really high tolerance
   # specifying the number of restarts
-  linearsolver = GeneralizedConjugateResidual(10, Q, 1e-8)
+  linearsolver = GeneralizedConjugateResidual(3, Q, 1e-3)
 
   #=
   timestepper = ARK548L2SA2KennedyCarpenter(spacedisc, lin_spacedisc,
@@ -450,7 +451,7 @@ let
 
   # Stable explicit time step
   dt = min(Δx, Δy, Δz) / soundspeed_air(300.0) / Npoly
-  dt *= 200
+  dt *= 80
 
   output_time = 0.5
   output_steps = ceil(output_time / dt)
