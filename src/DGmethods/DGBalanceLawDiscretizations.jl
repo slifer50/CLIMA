@@ -533,7 +533,7 @@ MPIStateArrays.MPIStateArray(f::Function,
 
 
 """
-    odefun!(disc::DGBalanceLaw, dQ::MPIStateArray, Q::MPIStateArray, t; increment)
+    odefun!(disc::DGBalanceLaw, dQ, Q::MPIStateArray, t; increment)
 
 Evaluates the right-hand side of the discontinuous Galerkin semi-discretization
 defined by `disc` at time `t` with state `Q`.
@@ -547,7 +547,12 @@ and after the call `dQ += F(Q, t)` if `increment == true`
 or `dQ = F(Q, t)` if `increment == false`
 """
 function SpaceMethods.odefun!(disc::DGBalanceLaw, dQ::MPIStateArray,
-                              Q::MPIStateArray, param, t; increment)
+                              Q, param, t; increment)
+  SpaceMethods.odefun!(disc, dQ.Q, Q, param, t; increment=increment)
+end
+
+function SpaceMethods.odefun!(disc::DGBalanceLaw, dQ, Q::MPIStateArray, param,
+                              t; increment)
 
   device = typeof(Q.Q) <: Array ? CPU() : CUDA()
 
@@ -616,7 +621,7 @@ function SpaceMethods.odefun!(disc::DGBalanceLaw, dQ::MPIStateArray,
 
   @launch(device, threads=(Nq, Nq, Nqk), blocks=nrealelem,
           volumerhs!(Val(dim), Val(N), Val(nstate), Val(nviscstate),
-                     Val(nauxstate), disc.flux!, disc.source!, dQ.Q, Q.Q,
+                     Val(nauxstate), disc.flux!, disc.source!, dQ, Q.Q,
                      Qvisc.Q, auxstate.Q, vgeo, t, lgl_weights_vec, Dmat,
                      topology.realelems, increment))
 
@@ -630,7 +635,7 @@ function SpaceMethods.odefun!(disc::DGBalanceLaw, dQ::MPIStateArray,
   @launch(device, threads=Nfp, blocks=nrealelem,
           facerhs!(Val(dim), Val(N), Val(nstate), Val(nviscstate),
                    Val(nauxstate), disc.numerical_flux!,
-                   disc.numerical_boundary_flux!, dQ.Q, Q.Q, Qvisc.Q,
+                   disc.numerical_boundary_flux!, dQ, Q.Q, Qvisc.Q,
                    auxstate.Q, vgeo, sgeo, t, vmapM, vmapP, elemtobndy,
                    topology.realelems))
 
