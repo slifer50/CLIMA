@@ -356,6 +356,7 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt, output_steps)
   # specifying the number of restarts
   linearsolver = GeneralizedConjugateResidual(3, Q, 1e-3)
 
+  # linearsolver = DGBalanceLawDiscretizations.matrix(lin_spacedisc)
   timestepper = ARK548L2SA2KennedyCarpenter(spacedisc, lin_spacedisc,
                                             linearsolver, Q; dt = dt, t0 = 0)
   # }}}
@@ -388,13 +389,13 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt, output_steps)
   vtkdir = "vtk_RTB_IMEX"
   mkpath(vtkdir)
   cbvtk = GenericCallbacks.EveryXSimulationSteps(output_steps) do (init=false)
-    outprefix = @sprintf("%s/RTB_%dD_mpirank%04d_step%04d", vtkdir, dim,
+    outprefix = @sprintf("%s/RTB_dt_1_%dD_mpirank%04d_step%04d", vtkdir, dim,
                          MPI.Comm_rank(mpicomm), step[1])
     @debug "doing VTK output" outprefix
     writevtk(outprefix, Q, spacedisc, statenames, spacedisc.auxstate, auxstatenames)
-    pvtuprefix = @sprintf("RTB_%dD_step%04d", dim, step[1])
+    pvtuprefix = @sprintf("RTB_dt_1_%dD_step%04d", dim, step[1])
     prefixes = ntuple(i->
-                      @sprintf("%s/RTB_%dD_mpirank%04d_step%04d", vtkdir,
+                      @sprintf("%s/RTB_dt_1_%dD_mpirank%04d_step%04d", vtkdir,
                                dim, i-1, step[1]),
                       MPI.Comm_size(mpicomm))
     writepvtu(pvtuprefix, prefixes, (statenames..., auxstatenames...))
@@ -432,9 +433,10 @@ let
 
   # Stable explicit time step
   dt = min(Δx, Δy, Δz) / soundspeed_air(300.0) / Npoly
-  dt *= 80
+  dt *= 400
+  dt = 0.5
 
-  output_time = 0.5
+  output_time = 5
   output_steps = ceil(output_time / dt)
 
   @info @sprintf """ ----------------------------------------------------"""
@@ -453,7 +455,7 @@ let
   @info @sprintf """     dt         = %.2e                               """ dt
   @info @sprintf """ ----------------------------------------------------"""
 
-  timeend = 100
+  timeend = 1000
   polynomialorder = Npoly
   DFloat = Float64
   expected_engf_eng0 = Dict()

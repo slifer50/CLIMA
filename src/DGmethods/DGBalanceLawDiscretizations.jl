@@ -547,7 +547,7 @@ and after the call `dQ += F(Q, t)` if `increment == true`
 or `dQ = F(Q, t)` if `increment == false`
 """
 function SpaceMethods.odefun!(disc::DGBalanceLaw, dQ::MPIStateArray,
-                              Q, param, t; increment)
+                              Q::MPIStateArray, param, t; increment)
   SpaceMethods.odefun!(disc, dQ.Q, Q, param, t; increment=increment)
 end
 
@@ -843,6 +843,10 @@ is applied in the horizontal and vertical reference directions, respectively.
 Note, it is assumed that the trailing dimension is the vertical dimension and
 the rest are horizontal.
 """
+function apply!(Q::MPIStateArray, states, disc::DGBalanceLaw, filter::AbstractFilter;
+                horizontal = true, vertical = true)
+  apply!(Q.Q, states, disc, filter;horizontal=horizontal, vertical=vertical)
+end
 function apply!(Q, states, disc::DGBalanceLaw, filter::AbstractFilter;
                 horizontal = true, vertical = true)
   grid = disc.grid
@@ -854,7 +858,7 @@ function apply!(Q, states, disc::DGBalanceLaw, filter::AbstractFilter;
   nstate = size(Q, 2)
 
   filtermatrix = filter.filter
-  device = typeof(Q.Q) <: Array ? CPU() : CUDA()
+  device = typeof(Q) <: Array ? CPU() : CUDA()
 
   nelem = length(topology.elems)
   Nq = N + 1
@@ -864,7 +868,34 @@ function apply!(Q, states, disc::DGBalanceLaw, filter::AbstractFilter;
 
   @launch(device, threads=(Nq, Nq, Nqk), blocks=nrealelem,
           knl_apply_filter!(Val(dim), Val(N), Val(nstate), Val(horizontal), Val(vertical),
-                            Q.Q, Val(states), filtermatrix, topology.realelems))
+                            Q, Val(states), filtermatrix, topology.realelems))
+end
+
+using SparseArrays
+function matrix(disc::DGBalanceLaw; filter=nothing)
+  matrix(disc, (x...; kw...) -> SpaceMethods.odefun!(disc, x...; kw...); filter=filter)
+end
+function matrix(disc, rhs!; filter=nothing)
+  Q = MPIStateArray(disc)
+  dQ = similar(Q.Q)
+  Q .= 0
+  I = Array{Int64}(undef, 0)
+  J = Array{Int64}(undef, 0)
+  V = Array{eltype(Q)}(undef, 0)
+  for k = 1:length(Q)
+    mod(k, 1000) == 1 && @show k, length(Q)
+    Q[k] = 1
+    if !isnothing(filter)
+      apply!(Q, 1:disc.nstate, disc, filter)
+    end
+    rhs!(dQ, Q, nothing, 0; increment=false)
+    Q .= 0
+    SV = sparse(reshape(dQ, length(dQ)))
+    append!(I, SV.nzind)
+    append!(J, k * ones(Int64, size(SV.nzind)))
+    append!(V, SV.nzval)
+  end
+  sparse(I, J, V)
 end
 
 end # module

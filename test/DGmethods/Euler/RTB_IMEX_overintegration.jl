@@ -15,7 +15,7 @@ using Logging, Printf, Dates
 using CLIMA.Vtk
 using CLIMA.LinearSolvers
 using CLIMA.GeneralizedConjugateResidualSolver
-using CLIMA.GeneralizedMinimalResidual
+using CLIMA.GeneralizedMinimalResidualSolver
 using CLIMA.AdditiveRungeKuttaMethod
 
 const γ_exact = 7 // 5 # FIXME: Remove this for some moist thermo approach
@@ -39,9 +39,9 @@ const _ρu⃗ = SVector(_ρu, _ρv, _ρw)
 const statenames = ("δρ", "ρu", "ρv", "ρw", "δρe")
 
 const numdims = 2
-const Δx    = 20
-const Δy    = 20
-const Δz    = 20
+const Δx    = 50
+const Δy    = 50
+const Δz    = 50
 const Npoly = 4
 
 # Physical domain extents
@@ -378,6 +378,34 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt, output_steps)
   timestepper = ARK548L2SA2KennedyCarpenter(nonlin_rhs!, lin_rhs!,
                                             linearsolver, Q; dt = dt, t0 = 0)
   # }}}
+  #=
+  A = DGBalanceLawDiscretizations.matrix(lin_spacedisc, lin_rhs!; filter=filter)
+  @show typeof(A)
+  E = eigvals(Matrix(A))
+  @show extrema(real.(E))
+  @show extrema(imag.(E))
+  =#
+
+  grid = DiscontinuousSpectralElementGrid(topl,
+                                          FloatType = DFloat,
+                                          DeviceArray = ArrayType,
+                                          polynomialorder = N)
+  lin_spacedisc = DGBalanceLaw(grid = grid,
+                               length_state_vector = _nstate,
+                               flux! = lin_eulerflux!,
+                               numerical_flux! = lin_numflux!,
+                               numerical_boundary_flux! = lin_numbcflux!,
+                               auxiliary_state_length = _nauxstate,
+                               auxiliary_state_initialization! =
+                               auxiliary_state_initialization!,
+                               source! = lin_source!)
+  A = DGBalanceLawDiscretizations.matrix(lin_spacedisc)
+  @show typeof(A)
+  E = eigvals(Matrix(A))
+  @show extrema(real.(E))
+  @show extrema(imag.(E))
+
+  return
 
   eng0 = norm(Q)
   @info @sprintf """Starting
@@ -482,6 +510,6 @@ let
   engf_eng0 = run(mpicomm, dim, numelem[1:dim], polynomialorder, timeend,
                   DFloat, dt, output_steps)
 
-  @test engf_eng0 ≈ expected_engf_eng0[DFloat]
+  # @test engf_eng0 ≈ expected_engf_eng0[DFloat]
 end
 nothing

@@ -70,7 +70,7 @@ function linearsolve!(linearoperator!, Q, Qrhs, solver::AbstractIterativeLinearS
     if !isfinite(residual_norm)
       error("norm of residual is not finite after $iters iterations of `doiteration!`")
     end
-    mod(iters, 10000)==0 && @show iters, residual_norm
+    mod(iters, 100)==0 && @show iters, residual_norm
     
     achieved_tolerance = residual_norm / threshold * solver.tolerance[1]
   end
