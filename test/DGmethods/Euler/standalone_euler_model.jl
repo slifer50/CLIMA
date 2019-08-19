@@ -1,6 +1,7 @@
 using CLIMA.VariableTemplates
 using StaticArrays
-using CLIMA.PlanetParameters: grav
+using CLIMA.PlanetParameters: grav, cv_d, T_0
+using CLIMA.MoistThermodynamics: PhaseDry, air_pressure, soundspeed_air
 
 import CLIMA.DGmethods: BalanceLaw, vars_aux, vars_state, vars_gradient,
                         vars_diffusive, flux!, source!, wavespeed,
@@ -32,12 +33,6 @@ end
 vars_gradient(::EulerModel, T) = Tuple{}
 vars_diffusive(::EulerModel, T) = Tuple{}
 
-const γ_exact = 7 // 5
-
-function pressure(ρ::T, ρinv, ρe, ρu⃗, ϕ) where T
-  γ::T = γ_exact
-  (γ - 1) * (ρe - ρinv * ρu⃗' * ρu⃗ / 2 - ϕ * ρ)
-end
 
 function flux!(m::EulerModel, flux::Grad, state::Vars, _::Vars, aux::Vars,
                t::Real)
@@ -47,7 +42,8 @@ function flux!(m::EulerModel, flux::Grad, state::Vars, _::Vars, aux::Vars,
   ρinv = 1 / ρ
   u⃗ = ρinv * ρu⃗
   ϕ = geopotential(m.gravity, aux)
-  p = pressure(ρ, ρinv, ρe, ρu⃗, ϕ)
+  e = ρinv * ρe
+  p = air_pressure(PhaseDry(e - u⃗' * u⃗ / 2 - ϕ, ρ))
 
   # compute the flux!
   flux.ρ  = ρu⃗
@@ -71,16 +67,15 @@ end
 
 function wavespeed(m::EulerModel, nM, state::Vars, aux::Vars, t::Real)
   T = eltype(state)
-  γ = T(γ_exact)
 
   (ρ, ρu⃗, ρe) = (state.ρ, state.ρu⃗, state.ρe)
 
   ρinv = 1 / ρ
   u⃗ = ρinv * ρu⃗
+  e = ρinv * ρe
   ϕ = geopotential(m.gravity, aux)
-  p = pressure(ρ, ρinv, ρe, ρu⃗, ϕ)
   @inbounds n⃗ = SVector{3, T}(nM[1], nM[2], nM[3])
-  abs(n⃗' * u⃗) + sqrt(ρinv * γ * p)
+  abs(n⃗' * u⃗) + soundspeed_air(PhaseDry(e - u⃗' * u⃗ / 2 - ϕ, ρ))
 end
 
 abstract type GravityModel end
