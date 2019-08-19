@@ -58,6 +58,7 @@ function initial_condition!(m::EulerModel, ::IsentropicVortex, state::Vars,
   state.ρu⃗ = SVector{3, DFloat}(ρ * u, ρ * v, ρ * w)
   state.ρe = DFloat(ρe)
 end
+gravitymodel(::IsentropicVortex) = NoGravity()
 
 function run(mpicomm, ArrayType, topl, N, timeend, DFloat, dt)
 
