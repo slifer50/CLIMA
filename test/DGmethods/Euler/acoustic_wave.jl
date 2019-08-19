@@ -43,8 +43,7 @@ function initial_condition!(m::EulerModel, aw::AcousticWave, state::Vars,
 
     ## Get the reference pressure from the previously defined reference state
     ϕ = geopotential(m.gravity, aux)
-    e_ref_int = - ϕ
-    T_ref = air_temperature(e_ref_int)
+    T_ref = aw.T0
     P_ref = p0 * exp(-ϕ / (gas_constant_air(DFloat) * aw.T0))
 
     ## Define the initial pressure Perturbation
@@ -59,7 +58,7 @@ function initial_condition!(m::EulerModel, aw::AcousticWave, state::Vars,
     ρ = air_density(T_ref, P)
 
     ## Define the initial total energy perturbation
-    e_int = cv_d * T_ref # internal_energy(T_ref)
+    e_int = internal_energy(T_ref)
     ρe = e_int * ρ + ρ * ϕ
     state.ρ = ρ
     state.ρu⃗ = SVector{3, DFloat}(0,0,0)
@@ -107,8 +106,25 @@ function run(mpicomm, ArrayType, problem, topl, N, timeend, DFloat, dt)
                      energy)
     end
   end
+  step = [0]
+  vtkdir = "vtk_acoustic_wave"
+  mkpath(vtkdir)
+  cbvtk = GenericCallbacks.EveryXSimulationSteps(10) do (init=false)
+    outprefix = @sprintf("%s/acoustic_wave_mpirank%04d_step%04d", vtkdir,
+                         MPI.Comm_rank(mpicomm), step[1])
+    @debug "doing VTK output" outprefix
+    writevtk(outprefix, Q, dg, ("ρ", "ρu1", "ρu2", "ρu3", "ρe"))
+    pvtuprefix = @sprintf("acoustic_wave_step%04d", step[1])
+    prefixes = ntuple(i->
+                      @sprintf("%s/acoustic_wave_mpirank%04d_step%04d", vtkdir,
+                               i-1, step[1]),
+                      MPI.Comm_size(mpicomm))
+    writepvtu(pvtuprefix, prefixes, ("ρ", "ρu1", "ρu2", "ρu3", "ρe"))
+    step[1] += 1
+    nothing
+  end
 
-  solve!(Q, lsrk, param; timeend=timeend, callbacks=(cbinfo, ))
+  solve!(Q, lsrk, param; timeend=timeend, callbacks=(cbinfo, cbvtk))
 
   engf = norm(Q)
 
