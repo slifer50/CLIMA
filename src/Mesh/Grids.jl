@@ -100,11 +100,11 @@ struct DiscontinuousSpectralElementGrid{T, dim, N, Np, DA,
                                             FloatType = nothing,
                                             DeviceArray = nothing,
                                             polynomialorder = nothing,
-                                            meshwarp::Function =
-                                            (x...)->identity(x)) where dim
+                                            meshwarp = nothing) where dim
     @assert FloatType != nothing
     @assert DeviceArray != nothing
     @assert polynomialorder != nothing
+
 
     N = polynomialorder
     (ξ, ω) = Elements.lglpoints(FloatType, N)
@@ -114,7 +114,15 @@ struct DiscontinuousSpectralElementGrid{T, dim, N, Np, DA,
     (vmapM, vmapP) = mappings(N, topology.elemtoelem, topology.elemtoface,
                               topology.elemtoordr)
 
-    (vgeo, sgeo) = computegeometry(topology, D, ξ, ω, meshwarp, vmapM)
+    if meshwarp !== nothing
+      (vgeo, sgeo) = computegeometry(topology, D, ξ, ω, meshwarp, vmapM)
+    elseif typeof(topology) <: StackedCubedSphereTopology
+      (vgeo, sgeo) = computegeometry(topology, D, ξ, ω,
+                                     Topologies.cubedshellwarp, vmapM)
+    else
+      (vgeo, sgeo) = computegeometry(topology, D, ξ, ω, (x...)->identity(x),
+                                     vmapM)
+    end
     Np = (N+1)^dim
     @assert Np == size(vgeo, 1)
 
