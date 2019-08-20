@@ -10,13 +10,18 @@ import CLIMA.DGmethods: BalanceLaw, vars_aux, vars_state, vars_gradient,
 
 abstract type EulerProblem end
 
-struct EulerModel{P, G} <: BalanceLaw
+struct EulerModel{P, G, R} <: BalanceLaw
   problem::P
   gravity::G
+  refstate::R
 end
 function EulerModel(problem)
   gravity = gravitymodel(problem)
-  EulerModel{typeof(problem), typeof(gravity)}(problem, gravity)
+  refstate = referencestate(problem)
+  P = typeof(problem)
+  G = typeof(gravity)
+  R = typeof(refstate)
+  EulerModel{P, G, R}(problem, gravity, refstate)
 end
 
 init_state!(m::EulerModel, x...) = initial_condition!(m, m.problem, x...)
@@ -28,6 +33,7 @@ end
 function vars_aux(m::EulerModel, T)
   @vars begin
     gravity::vars_aux(m.gravity, T)
+    refstate::vars_aux(m.refstate, T)
   end
 end
 vars_gradient(::EulerModel, T) = Tuple{}
@@ -37,7 +43,7 @@ vars_diffusive(::EulerModel, T) = Tuple{}
 function flux!(m::EulerModel, flux::Grad, state::Vars, _::Vars, aux::Vars,
                t::Real)
 
-  (ρ, ρu⃗, ρe) = (state.ρ, state.ρu⃗, state.ρe)
+  (ρ, ρu⃗, ρe) = fullstate(m.refstate, state, aux)
 
   ρinv = 1 / ρ
   u⃗ = ρinv * ρu⃗
@@ -63,12 +69,13 @@ end
 
 function init_aux!(m::EulerModel, aux::Vars, (x1, x2, x3))
   init_aux!(m.gravity, aux, (x1, x2, x3))
+  init_aux!(m, m.refstate, aux, (x1, x2, x3))
 end
 
 function wavespeed(m::EulerModel, nM, state::Vars, aux::Vars, t::Real)
   T = eltype(state)
 
-  (ρ, ρu⃗, ρe) = (state.ρ, state.ρu⃗, state.ρe)
+  (ρ, ρu⃗, ρe) = fullstate(m.refstate, state, aux)
 
   ρinv = 1 / ρ
   u⃗ = ρinv * ρu⃗
@@ -82,7 +89,8 @@ abstract type GravityModel end
 vars_aux(m::GravityModel, T) = @vars(ϕ::T, ∇ϕ::SVector{3, T})
 geopotential(::GravityModel, aux) = aux.gravity.ϕ
 function geopotential_source!(::GravityModel, source, state, aux)
-  source.ρu⃗ -= state.ρ * aux.gravity.∇ϕ
+  (ρ, ρu⃗, ρe) = fullstate(m.refstate, state, aux)
+  source.ρu⃗ -= ρ * aux.gravity.∇ϕ
 end
 
 struct NoGravity <: GravityModel end
@@ -134,4 +142,39 @@ function nofluxbc!(stateP, nM, stateM, auxM)
     n⃗_ρu⃗M = n⃗' * ρu⃗M
     stateP.ρu⃗ = ρu⃗M - 2n⃗_ρu⃗M * n⃗
   end
+end
+
+referencestate(::EulerProblem) = NoReferenceState()
+abstract type EulerReferenceState end
+struct NoReferenceState <: EulerReferenceState end
+vars_aux(::NoReferenceState, _) = @vars()
+init_aux!(::EulerModel, ::NoReferenceState, _, _) = nothing
+fullstate(::NoReferenceState, state, aux) = (state.ρ, state.ρu⃗, state.ρe)
+removerefstate!(::NoReferenceState, state, aux) = nothing
+
+struct DensityEnergyReferenceState <: EulerReferenceState end
+vars_aux(::DensityEnergyReferenceState, T) = @vars(ρ::T, ρe::T)
+function init_aux!(m::EulerModel, r::DensityEnergyReferenceState, aux, x⃗)
+  referencestate!(m, m.problem, r, aux, x⃗)
+end
+function fullstate(::DensityEnergyReferenceState, state, aux)
+  (state.ρ+aux.refstate.ρ, state.ρu⃗, state.ρe+aux.refstate.ρe)
+end
+function removerefstate!(::DensityEnergyReferenceState, state, aux)
+  state.ρ -= aux.refstate.ρ
+  state.ρe -= aux.refstate.ρe
+end
+
+struct FullReferenceState <: EulerReferenceState end
+vars_aux(::FullReferenceState, T) = @vars(ρ::T, ρu⃗::SVector{3, T}, ρe::T)
+function init_aux!(m::EulerModel, r::FullReferenceState, aux, x⃗)
+  referencestate!(m, m.problem, r, aux, x⃗)
+end
+function fullstate(::FullReferenceState, state, aux)
+  (state.ρ+aux.refstate.ρ, state.ρu⃗+aux.refstate.ρu⃗, state.ρe+aux.refstate.ρe)
+end
+function removerefstate!(::FullReferenceState, state, aux)
+  state.ρ -= aux.refstate.ρ
+  state.ρu⃗ -= aux.refstate.ρu⃗
+  state.ρe -= aux.refstate.ρe
 end
