@@ -33,6 +33,7 @@ struct IsentropicVortex{T} <: EulerProblem
     new{T}(5, 7 // 5, 2, 1, 1, 5)
   end
 end
+# TODO: http://persson.berkeley.edu/pub/wang_et_al2012highorder.pdf
 function referencestate!(::EulerModel, iv::IsentropicVortex,
                          ::DensityEnergyReferenceState,
                          aux::Vars, (x1, x2, x3))
@@ -52,7 +53,7 @@ function referencestate!(::EulerModel, iv::IsentropicVortex,
   γm1 = γ - 1
   ρ = (Tinf)^(1 / γm1)
   p = ρ^γ
-  ρe = p / γm1 + ρ * (u1^2 + u2^2 + u3^2) / 2 - ρ * cv_d * T_0
+  ρe = p / γm1 + ρ * (u1^2 + u2^2 + u3^2) / 2
 
   aux.refstate.ρ = DFloat(ρ)
   # aux.refstate.ρu⃗ = SVector{3, DFloat}(ρ * u1, ρ * u2, ρ * u3)
@@ -87,7 +88,7 @@ function initial_condition!(m::EulerModel, iv::IsentropicVortex, state::Vars,
   γm1 = γ - 1
   ρ = (Tinf - (γm1 * λ^2 * exp(2 * (1 - rsq)) / (γ * 16 * π^2)))^(1 / γm1)
   p = ρ^γ
-  ρe = p / γm1 + ρ * (u1^2 + u2^2 + u3^2) / 2 - ρ * cv_d * T_0
+  ρe = p / γm1 + ρ * (u1^2 + u2^2 + u3^2) / 2
 
   state.ρ = DFloat(ρ)
   state.ρu⃗ = SVector{3, DFloat}(ρ * u1, ρ * u2, ρ * u3)

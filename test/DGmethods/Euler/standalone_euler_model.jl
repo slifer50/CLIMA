@@ -49,7 +49,8 @@ function flux!(m::EulerModel, flux::Grad, state::Vars, _::Vars, aux::Vars,
   u⃗ = ρinv * ρu⃗
   ϕ = geopotential(m.gravity, aux)
   e = ρinv * ρe
-  p = air_pressure(PhaseDry(e - u⃗' * u⃗ / 2 - ϕ, ρ))
+  T = eltype(state)
+  p = air_pressure(PhaseDry(e - u⃗' * u⃗ / 2 - ϕ - T(cv_d * T_0), ρ))
 
   # compute the flux!
   flux.ρ  = ρu⃗
@@ -82,7 +83,7 @@ function wavespeed(m::EulerModel, nM, state::Vars, aux::Vars, t::Real)
   e = ρinv * ρe
   ϕ = geopotential(m.gravity, aux)
   @inbounds n⃗ = SVector{3, T}(nM[1], nM[2], nM[3])
-  abs(n⃗' * u⃗) + soundspeed_air(PhaseDry(e - u⃗' * u⃗ / 2 - ϕ, ρ))
+  abs(n⃗' * u⃗) + soundspeed_air(PhaseDry(e - u⃗' * u⃗ / 2 - ϕ - T(cv_d * T_0), ρ))
 end
 
 abstract type GravityModel end
