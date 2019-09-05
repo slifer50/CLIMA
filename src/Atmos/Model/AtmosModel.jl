@@ -17,7 +17,8 @@ using ..SubgridScaleParameters
 
 import CLIMA.DGmethods: BalanceLaw, vars_aux, vars_state, vars_gradient,
                         vars_diffusive, vars_integrals, flux_nondiffusive!,
-                        flux_diffusive!, source!, wavespeed, boundarycondition!,
+                        flux_diffusive!, source!, wavespeed,
+                        boundarycondition_state!, boundarycondition_diffusive!,
                         gradvariables!, diffusive!, init_aux!, init_state!,
                         update_aux!, integrate_aux!, LocalGeometry, lengthscale,
                         resolutionmetric
@@ -40,6 +41,7 @@ struct AtmosModel{O,RS,T,M,R,S,BC,IS} <: BalanceLaw
   moisture::M
   radiation::R
   source::S
+  # TODO: Probably want to have different bc for state and diffusion...
   boundarycondition::BC
   init_state::IS
 end
@@ -227,8 +229,18 @@ function source!(m::AtmosModel, source::Vars, state::Vars, aux::Vars, t::Real)
 end
 
 
-function boundarycondition!(m::AtmosModel, stateP::Vars, diffP::Vars, auxP::Vars, nM, stateM::Vars, diffM::Vars, auxM::Vars, bctype, t)
-  atmos_boundarycondition!(m.boundarycondition, m, stateP, diffP, auxP, nM, stateM, diffM, auxM, bctype, t)
+function boundarycondition_state!(m::AtmosModel, stateP::Vars,
+                                  auxP::Vars, nM, stateM::Vars,
+                                  auxM::Vars, bctype, t)
+  atmos_boundarycondition_state!(m.boundarycondition, m, stateP, auxP, nM,
+                                 stateM, auxM, bctype, t)
+end
+
+function boundarycondition_diffusive!(m::AtmosModel, stateP::Vars, diffP::Vars,
+                                      auxP::Vars, nM, stateM::Vars, diffM::Vars,
+                                      auxM::Vars, bctype, t)
+  atmos_boundarycondition_diffusive!(m.boundarycondition, m, stateP, diffP,
+                                     auxP, nM, stateM, diffM, auxM, bctype, t)
 end
 
 function init_state!(m::AtmosModel, state::Vars, aux::Vars, coords, t)
