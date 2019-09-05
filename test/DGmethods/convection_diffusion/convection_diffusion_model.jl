@@ -3,7 +3,8 @@ using CLIMA.VariableTemplates
 import CLIMA.DGmethods: BalanceLaw,
                         vars_aux, vars_state, vars_gradient, vars_diffusive,
                         flux!, source!, gradvariables!, diffusive!,
-                        LocalGeometry, init_aux!
+                        init_aux!, init_state!, boundarycondition!,
+                        wavespeed, LocalGeometry
 
 abstract type ConvectionDiffusionProblem end
 struct ConvectionDiffusion{dim, P} <: BalanceLaw
@@ -74,7 +75,7 @@ Set the variable to take the gradient of (`ρ` in this case)
 """
 function diffusive!(m::ConvectionDiffusion, auxDG::Vars, gradvars::Grad,
                     state::Vars, aux::Vars, t::Real)
-  ∇ρ = gradvars.∇ρ
+  ∇ρ = gradvars.ρ
   D = aux.D
   auxDG.σ = D * ∇ρ
 end
@@ -104,4 +105,17 @@ initialize the auxiliary state
 function init_aux!(m::ConvectionDiffusion, aux::Vars, geom::LocalGeometry)
   aux.coord = geom.coord
   init_velocity_diffusion!(m.problem, aux, geom)
+end
+
+function init_state!(m::ConvectionDiffusion, state::Vars, aux::Vars,
+                     coords::NTuple, t::Real)
+  initial_condition!(m.problem, state, aux, coords, t)
+end
+
+function boundarycondition!(m::ConvectionDiffusion,
+                            stateP::Vars, diffP::Vars, auxP::Vars,
+                            nM,
+                            stateM::Vars, diffM::Vars, auxM::Vars,
+                            bctype, t)
+  # FILL ME!
 end

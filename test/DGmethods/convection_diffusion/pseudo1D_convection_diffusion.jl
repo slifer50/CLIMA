@@ -7,6 +7,11 @@ using CLIMA.DGmethods
 using CLIMA.DGmethods.NumericalFluxes
 using CLIMA.MPIStateArrays
 using CLIMA.LowStorageRungeKuttaMethod
+using LinearAlgebra
+using Printf
+using Dates
+using CLIMA.GenericCallbacks
+using CLIMA.ODESolvers
 
 @static if haspkg("CuArrays")
   using CUDAdrv
@@ -20,7 +25,7 @@ end
 
 include("convection_diffusion_model.jl")
 
-struct Pseudo1D{n, α, β} <: ConvectionDiffusionProblem end
+struct Pseudo1D{n, α, β, μ, δ} <: ConvectionDiffusionProblem end
 
 function init_velocity_diffusion!(::Pseudo1D{n, α, β}, aux::Vars,
                                   geom::LocalGeometry) where {n, α, β}
@@ -31,21 +36,28 @@ function init_velocity_diffusion!(::Pseudo1D{n, α, β}, aux::Vars,
   aux.D = β * n * n'
 end
 
-function run(mpicomm, ArrayType, dim, topl, N, timeend, DFloat, dt, n, α, β)
+function initial_condition!(::Pseudo1D{n, α, β, μ, δ}, state, aux, x,
+                            t) where {n, α, β, μ, δ}
+  ξn = dot(n, x)
+  # ξT = SVector(x) - ξn * n
+  state.ρ = exp(-(ξn - μ - α * t)^2 / (4 * β * (δ + t))) / sqrt(1 + t / δ)
+end
+
+function run(mpicomm, ArrayType, dim, topl, N, timeend, DFloat, dt,
+             n, α, β, μ, δ)
 
   grid = DiscontinuousSpectralElementGrid(topl,
                                           FloatType = DFloat,
                                           DeviceArray = ArrayType,
                                           polynomialorder = N,
                                          )
-  dg = DGModel(ConvectionDiffusion{dim}(Pseudo1D{n, α, β}()),
+  dg = DGModel(ConvectionDiffusion{dim}(Pseudo1D{n, α, β, μ, δ}()),
                grid,
                Rusanov(),
                DefaultGradNumericalFlux())
 
   param = init_ode_param(dg)
 
-  #=
   Q = init_ode_state(dg, param, DFloat(0))
   
   lsrk = LSRK54CarpenterKennedy(dg, Q; dt = dt, t0 = 0)
@@ -73,6 +85,7 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, DFloat, dt, n, α, β)
   end
 
   solve!(Q, lsrk, param; timeend=timeend, callbacks=(cbinfo, ))
+  #=
   # solve!(Q, lsrk, param; timeend=timeend, callbacks=(cbinfo, cbvtk))
 
 
@@ -111,7 +124,7 @@ let
   polynomialorder = 4
   base_num_elem = 4
 
-  lvls = 4
+  lvls = 1
 
   @testset "$(@__FILE__)" for ArrayType in ArrayTypes
     for DFloat in (Float64,) #Float32)
@@ -119,7 +132,9 @@ let
       for dim = 2:3
         n = SVector(1, 1, dim == 2 ? 0 : 1) / DFloat(sqrt(dim))
         α = DFloat(5 // 2)
-        β = DFloat(1 // 1000)
+        β = DFloat(1 // 10)
+        μ = DFloat(0)
+        δ = DFloat(1 // 1000)
         for l = 1:lvls
           Ne = 2^(l-1) * base_num_elem
           brickrange = ntuple(j->range(DFloat(-1); length=Ne+1, stop=1), dim)
@@ -134,7 +149,7 @@ let
 
           @info (ArrayType, DFloat, dim)
           result[l] = run(mpicomm, ArrayType, dim, topl, polynomialorder,
-                          timeend, DFloat, dt, n, α, β)
+                          timeend, DFloat, dt, n, α, β, μ, δ)
           # @test result[l] ≈ DFloat(expected_result[dim-1, l])
         end
       end
