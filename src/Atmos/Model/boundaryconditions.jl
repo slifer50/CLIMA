@@ -14,6 +14,17 @@ end
 abstract type BoundaryCondition
 end
 
+
+"""
+    PeriodicBC <: BoundaryCondition
+
+Assume that the topology is periodic and hence nothing special needs to be done at the boundaries.
+"""
+struct PeriodicBC <: BoundaryCondition end
+
+# TODO: assert somewhere that the topology is actually periodic when using those
+atmos_boundarycondition!(::PeriodicBC, _...) = nothing
+
 """
     NoFluxBC <: BoundaryCondition
 
@@ -26,7 +37,7 @@ function atmos_boundarycondition!(bc::NoFluxBC, m::AtmosModel, stateP::Vars, dif
     DF = eltype(stateM)
     stateP.ρ = stateM.ρ
     stateP.ρu -= 2 * dot(stateM.ρu, nM) * SVector(nM)
-    diffP.ρτ = SVector(DF(0), DF(0), DF(0), DF(0), DF(0), DF(0))
+    diffP.turbulence.ρτ = SVector(DF(0), DF(0), DF(0), DF(0), DF(0), DF(0))
     diffP.moisture.ρd_h_tot = SVector(DF(0), DF(0), DF(0))
 end
 

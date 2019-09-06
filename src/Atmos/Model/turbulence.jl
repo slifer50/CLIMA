@@ -14,13 +14,48 @@ function init_aux!(::TurbulenceClosure, aux::Vars, geom::LocalGeometry)
 end
 function update_aux!(::TurbulenceClosure, state::Vars, diffusive::Vars, aux::Vars, t::Real)
 end
-function diffusive!(::TurbulenceClosure, diffusive, ∇transform, state, aux, t, ν)
+function diffusive!(::TurbulenceClosure, diffusive, ∇transform, state, aux, t)
 end
 function flux_diffusive!(::TurbulenceClosure, flux::Grad, state::Vars, diffusive::Vars, aux::Vars, t::Real)
 end
 function flux_nondiffusive!(::TurbulenceClosure, flux::Grad, state::Vars, diffusive::Vars, aux::Vars, t::Real)
 end
 function gradvariables!(::TurbulenceClosure, transform::Vars, state::Vars, aux::Vars, t::Real)
+end
+
+struct NoViscosity <: TurbulenceClosure end
+
+function symmetrize(X::StaticArray{Tuple{3,3}})
+  SHermitianCompact(SVector(X[1,1], (X[2,1] + X[1,2])/2, (X[3,1] + X[1,3])/2, X[2,2], (X[3,2] + X[2,3])/2, X[3,3]))
+end
+
+function gradvariables_common!(transform::Vars, state::Vars, aux::Vars, t::Real)
+  ρinv = 1 / state.ρ
+  transform.turbulence.u = ρinv * state.ρu
+end
+
+function flux_diffusive_common!(flux::Grad, state::Vars, diffusive::Vars, aux::Vars, t::Real)
+  ρinv = 1/state.ρ
+  u = ρinv * state.ρu
+
+  ρτ = diffusive.turbulence.ρτ
+
+  flux.ρu += ρτ
+  flux.ρe += ρτ*u
+end
+
+function diffusive_common!(m::TurbulenceClosure, diffusive, ∇transform, state, aux, t)
+  ∇u = ∇transform.turbulence.u
+  
+  # strain rate tensor
+  S = symmetrize(∇u)
+
+  # kinematic viscosity tensor
+  ρν = dynamic_viscosity_tensor(m, S, state, diffusive, aux, t)
+
+  # momentum flux tensor
+  diffusive.turbulence.ρτ = scaled_momentum_flux_tensor(m, ρν, S)
+  ρν
 end
 
 """
@@ -30,6 +65,20 @@ Turbulence with constant dynamic viscosity (`ρν`). Divergence terms are includ
 """
 struct ConstantViscosityWithDivergence <: TurbulenceClosure
   ρν::Float64
+end
+vars_gradient(::ConstantViscosityWithDivergence,T) = @vars(u::SVector{3,T})
+vars_diffusive(::ConstantViscosityWithDivergence,T) = @vars(ρτ::SHermitianCompact{3,T,6})
+function flux_diffusive!(::ConstantViscosityWithDivergence,
+                         flux::Grad, state::Vars, diffusive::Vars, aux::Vars, t::Real)
+  flux_diffusive_common!(flux, state, diffusive, aux, t)
+end
+function diffusive!(m::ConstantViscosityWithDivergence,
+                    diffusive::Vars, ∇transform::Grad, state::Vars, aux::Vars, t::Real)
+  diffusive_common!(m, diffusive, ∇transform, state, aux, t)
+end
+function gradvariables!(::ConstantViscosityWithDivergence,
+                        transform::Vars, state::Vars, aux::Vars, t::Real)
+  gradvariables_common!(transform, state, aux, t)
 end
 dynamic_viscosity_tensor(m::ConstantViscosityWithDivergence, S, state::Vars, diffusive::Vars, aux::Vars, t::Real) = m.ρν
 function scaled_momentum_flux_tensor(m::ConstantViscosityWithDivergence, ρν, S)
@@ -61,16 +110,26 @@ struct SmagorinskyLilly{T} <: TurbulenceClosure
 end
 
 vars_aux(::SmagorinskyLilly,T) = @vars(Δ::T, f_b::T)
-vars_gradient(::SmagorinskyLilly,T) = @vars(θ_v::T)
-vars_diffusive(::SmagorinskyLilly,T) = @vars(∂θ∂Φ::T)
-function init_aux!(::SmagorinskyLilly, aux::Vars, geom::LocalGeometry)
-  aux.turbulence.Δ = lengthscale(geom)
+vars_gradient(::SmagorinskyLilly,T) = @vars(u::SVector{3,T}, θ_v::T)
+vars_diffusive(::SmagorinskyLilly,T) = @vars(ρτ::SHermitianCompact{3,T,6}, ∂θ∂Φ::T)
+
+function flux_diffusive!(::SmagorinskyLilly,
+                         flux::Grad, state::Vars, diffusive::Vars, aux::Vars, t::Real)
+  flux_diffusive_common!(flux, state, diffusive, aux, t)
 end
-function gradvariables!(m::SmagorinskyLilly, transform::Vars, state::Vars, aux::Vars, t::Real)
+function gradvariables!(m::SmagorinskyLilly,
+                        transform::Vars, state::Vars, aux::Vars, t::Real)
+  gradvariables_common!(transform, state, aux, t) 
   transform.turbulence.θ_v = aux.moisture.θ_v
 end
-function diffusive!(m::SmagorinskyLilly, diffusive::Vars, ∇transform::Grad, state::Vars, aux::Vars, t::Real, ρν::Union{Real,AbstractMatrix})
+function diffusive!(m::SmagorinskyLilly,
+                    diffusive::Vars, ∇transform::Grad, state::Vars, aux::Vars, t::Real)
+  ρν = diffusive_common!(m, diffusive, ∇transform, state, aux, t)
   diffusive.turbulence.∂θ∂Φ = dot(∇transform.turbulence.θ_v, aux.orientation.∇Φ)
+  ρν
+end
+function init_aux!(::SmagorinskyLilly, aux::Vars, geom::LocalGeometry)
+  aux.turbulence.Δ = lengthscale(geom)
 end
 
 """
